@@ -1,9 +1,21 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map/plugin_api.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:avatar_glow/avatar_glow.dart';
+import 'package:sliding_up_panel/sliding_up_panel.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:csv/csv.dart';
+import 'dart:convert';
 
-void main() => runApp(MyApp());
+void main() => runApp(romeTransitApp());
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class romeTransitApp extends StatelessWidget {
+  const romeTransitApp({super.key});
   static const String _title = 'Flutter Stateful Clicker Counter';
   // This widget is the root of your application.
   @override
@@ -29,17 +41,61 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  late final MapController _mapController;
+  late final LatLng gpsPosition;
+  var gpsMarker = <Marker>[];
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  @override
+  void initState() {
+    super.initState();
+    InitDB();
+    requestLocation();
+    _mapController = MapController();
+  }
+
+  InitDB() async {
+    String data = await rootBundle.loadString("assets/data/stops.json");
+    final result = await json.decode(data)
+    
+  }
+
+  requestLocation() async {
+    LocationPermission permission;
+    permission = await Geolocator.checkPermission();
+    permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied) {
+      if (Platform.isAndroid) {
+        SystemNavigator.pop();
+      } else if (Platform.isIOS) {
+        exit(0);
+      }
+    }
+    Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.best,
+            forceAndroidLocationManager: true)
+        .then((Position position) {
+      gpsMarker.clear();
+      gpsPosition = LatLng(position.latitude, position.longitude);
+
+      gpsMarker.add(Marker(
+          point: gpsPosition,
+          builder: (context) => AvatarGlow(
+                glowColor: Colors.blueGrey,
+                duration: Duration(milliseconds: 1000),
+                showTwoGlows: false,
+                repeat: true,
+                endRadius: 250,
+                child:
+                    CircleAvatar(backgroundColor: Colors.blueGrey, radius: 5),
+              )));
+      _mapController.move(gpsPosition, 19);
+
+      setState(() {});
     });
+  }
+
+  moveToGPS() {
+    _mapController.move(gpsPosition, 19);
   }
 
   @override
@@ -51,42 +107,27 @@ class _MyHomePageState extends State<MyHomePage> {
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text('Flutter Demo Click Counter'),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: TextStyle(fontSize: 25),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ),
+      body: SlidingUpPanel(
+          panel: Center(child: Text("CENTRO")),
+          body: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+                center: LatLng(0, 0),
+                zoom: 30,
+                keepAlive: true,
+                interactiveFlags: InteractiveFlag.all),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                maxZoom: 30,
+                retinaMode: MediaQuery.of(context).devicePixelRatio > 1.0,
+                tileSize: 256,
+              ),
+              MarkerLayer(
+                markers: gpsMarker,
+              )
+            ],
+          )),
     );
   }
 }
-
